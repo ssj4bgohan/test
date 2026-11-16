@@ -1,0 +1,294 @@
+<title>Dash Runner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Layout: full-bleed neon arcade canvas, HUD floating top, centered overlay panels */
+  :root{
+    --bg:#0e1230; --bg2:#1a1550; --ground:#2a2170;
+    --fg:#eef1ff; --muted:#9aa0d6;
+    --accent:#36e0c8; --accent2:#ff4d94; --accent3:#ffd84d;
+    --panel:rgba(20,18,55,.82); --stroke:rgba(120,130,220,.35);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    font-family:"Space Grotesk",ui-sans-serif,system-ui,sans-serif;
+    background:radial-gradient(130% 100% at 50% 0%,var(--bg2),var(--bg) 70%);
+    color:var(--fg);overflow:hidden;
+    display:flex;align-items:center;justify-content:center;
+    padding:max(16px,env(safe-area-inset-left,0px));
+    padding-right:max(16px,env(safe-area-inset-right,0px));
+  }
+  .wrap{width:100%;max-width:900px;display:flex;flex-direction:column;gap:12px}
+  .hud{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:10px}
+  .brand h1{
+    font-size:clamp(20px,5vw,30px);margin:0;letter-spacing:.5px;font-weight:700;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .dot{width:12px;height:12px;border-radius:50%;background:var(--accent);box-shadow:0 0 14px var(--accent)}
+  .scores{display:flex;gap:18px;font-variant-numeric:tabular-nums}
+  .scores .lbl{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted)}
+  .scores .val{font-size:clamp(18px,4vw,24px);font-weight:700}
+  .best .val{color:var(--accent3)}
+  .stage{position:relative;width:100%;aspect-ratio:9/4;border-radius:18px;overflow:hidden;
+    border:1px solid var(--stroke);box-shadow:0 20px 60px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.03)}
+  canvas{display:block;width:100%;height:100%}
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(180deg,rgba(10,12,40,.4),rgba(10,12,40,.78));backdrop-filter:blur(3px)}
+  .panel{background:var(--panel);border:1px solid var(--stroke);border-radius:16px;
+    padding:22px 26px;text-align:center;max-width:340px;box-shadow:0 12px 40px rgba(0,0,0,.4)}
+  .panel h2{margin:0 0 6px;font-size:24px}
+  .panel p{margin:0 0 16px;color:var(--muted);font-size:14px;line-height:1.5}
+  .big{font-size:40px;font-weight:700;color:var(--accent3);font-variant-numeric:tabular-nums;margin:4px 0 2px}
+  .btn{appearance:none;border:0;cursor:pointer;font-family:inherit;font-weight:700;font-size:16px;
+    color:#0c0f28;padding:13px 26px;border-radius:999px;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));
+    box-shadow:0 8px 24px rgba(54,224,200,.35);transition:transform .08s ease,box-shadow .2s}
+  .btn:hover{transform:translateY(-2px)}
+  .btn:active{transform:translateY(0)}
+  .btn:focus-visible{outline:3px solid var(--accent3);outline-offset:3px}
+  .foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    color:var(--muted);font-size:13px}
+  .keys{display:flex;gap:8px;align-items:center}
+  kbd{background:rgba(255,255,255,.08);border:1px solid var(--stroke);border-bottom-width:2px;
+    border-radius:6px;padding:3px 8px;font-family:inherit;font-size:12px;color:var(--fg)}
+  .sound{display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none;
+    background:none;border:0;color:var(--muted);font-family:inherit;font-size:13px}
+  .sound:focus-visible{outline:2px solid var(--accent3);outline-offset:2px;border-radius:6px}
+  @media (prefers-reduced-motion:reduce){.btn{transition:none}}
+</style>
+
+<div class="wrap">
+  <div class="hud">
+    <div class="brand"><span class="dot"></span><h1>Dash Runner</h1></div>
+    <div class="scores">
+      <div><div class="lbl">Pontos</div><div class="val" id="score">0</div></div>
+      <div class="best"><div class="lbl">Recorde</div><div class="val" id="best">0</div></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <canvas id="game" width="900" height="400" aria-label="Jogo de corrida estilo dino"></canvas>
+    <div class="overlay" id="overlay">
+      <div class="panel" id="panel">
+        <h2 id="title">Pronto pra correr?</h2>
+        <p id="desc">Pule os obstáculos e vá o mais longe possível. A velocidade aumenta com o tempo.</p>
+        <button class="btn" id="play">Começar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="keys">
+      <kbd>Espaço</kbd><span>ou</span><kbd>↑</kbd><span>ou toque — pular</span>
+    </div>
+    <button class="sound" id="soundBtn" aria-pressed="true">🔊 Som ligado</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const canvas=document.getElementById("game");
+  const ctx=canvas.getContext("2d");
+  const W=canvas.width, H=canvas.height;
+  const GROUND_Y=H-70;
+
+  const scoreEl=document.getElementById("score");
+  const bestEl=document.getElementById("best");
+  const overlay=document.getElementById("overlay");
+  const titleEl=document.getElementById("title");
+  const descEl=document.getElementById("desc");
+  const playBtn=document.getElementById("play");
+  const soundBtn=document.getElementById("soundBtn");
+
+  // ---------- persistent best ----------
+  let best=0;
+  try{ best=parseInt(localStorage.getItem("dash_best")||"0",10)||0; }catch(e){}
+  bestEl.textContent=best;
+
+  // ---------- sound (Web Audio, generated) ----------
+  let soundOn=true, actx=null;
+  function audio(){ if(!actx){ try{ actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } return actx; }
+  function beep(freq,dur,type,vol){
+    if(!soundOn) return; const a=audio(); if(!a) return;
+    const o=a.createOscillator(), g=a.createGain();
+    o.type=type||"square"; o.frequency.value=freq;
+    g.gain.setValueAtTime(0.0001,a.currentTime);
+    g.gain.exponentialRampToValueAtTime(vol||0.14,a.currentTime+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+(dur||0.12));
+    o.connect(g).connect(a.destination); o.start(); o.stop(a.currentTime+(dur||0.12));
+  }
+  const sfx={
+    jump(){ beep(520,0.12,"square",0.12); },
+    score(){ beep(880,0.08,"sine",0.1); },
+    hit(){ beep(150,0.3,"sawtooth",0.18); setTimeout(()=>beep(90,0.35,"sawtooth",0.16),70); }
+  };
+  soundBtn.addEventListener("click",()=>{
+    soundOn=!soundOn;
+    soundBtn.textContent=soundOn?"🔊 Som ligado":"🔈 Som desligado";
+    soundBtn.setAttribute("aria-pressed",String(soundOn));
+    if(soundOn) beep(660,0.08,"sine",0.1);
+  });
+
+  // ---------- game state ----------
+  const COLORS={accent:"#36e0c8",accent2:"#ff4d94",accent3:"#ffd84d",ground:"#2a2170",muted:"#9aa0d6"};
+  let state="idle"; // idle | playing | over
+  let score=0, speed=6, baseSpeed=6, t=0;
+  const player={x:90,y:GROUND_Y,w:44,h:46,vy:0,onGround:true};
+  const GRAV=0.9, JUMP=-15.5;
+  let obstacles=[], clouds=[], hills=[], nextObAt=0;
+
+  function reset(){
+    score=0; speed=baseSpeed; t=0;
+    player.y=GROUND_Y; player.vy=0; player.onGround=true;
+    obstacles=[]; nextObAt=60;
+    clouds=[]; for(let i=0;i<4;i++) clouds.push({x:Math.random()*W,y:40+Math.random()*120,s:0.4+Math.random()*0.6,r:18+Math.random()*16});
+    hills=[]; for(let i=0;i<3;i++) hills.push({x:i*360,r:120+Math.random()*80});
+    scoreEl.textContent=0;
+  }
+
+  function spawnObstacle(){
+    const tall=Math.random()<0.4;
+    const w=tall?26:22+Math.random()*26;
+    const h=tall?(54+Math.random()*26):(30+Math.random()*22);
+    obstacles.push({x:W+20,y:GROUND_Y-h+46,w,h,tall});
+  }
+
+  function jump(){
+    if(state==="idle"||state==="over"){ start(); return; }
+    if(player.onGround){ player.vy=JUMP; player.onGround=false; sfx.jump(); }
+  }
+
+  function start(){
+    audio(); // unlock on gesture
+    reset(); state="playing"; overlay.hidden=true;
+  }
+  function gameOver(){
+    state="over"; sfx.hit();
+    if(score>best){ best=score; bestEl.textContent=best; try{localStorage.setItem("dash_best",String(best));}catch(e){} }
+    titleEl.textContent="Fim de jogo";
+    descEl.innerHTML='Você fez <span class="big">'+score+'</span><br>Recorde: '+best;
+    playBtn.textContent="Jogar de novo";
+    overlay.hidden=false;
+  }
+
+  // ---------- input ----------
+  window.addEventListener("keydown",e=>{
+    if(e.code==="Space"||e.code==="ArrowUp"||e.key===" "){ e.preventDefault(); jump(); }
+  });
+  canvas.addEventListener("pointerdown",e=>{ e.preventDefault(); jump(); });
+  overlay.addEventListener("pointerdown",e=>{ if(e.target===overlay){ e.preventDefault(); } });
+  playBtn.addEventListener("click",e=>{ e.stopPropagation(); start(); });
+
+  // ---------- drawing ----------
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.roundRect(x,y,w,h,r); }
+  function drawBg(){
+    // sky glow
+    const g=ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,"#241b63"); g.addColorStop(1,"#120f34");
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    // hills
+    for(const hl of hills){
+      ctx.fillStyle="rgba(90,70,190,.35)";
+      ctx.beginPath(); ctx.arc(hl.x,GROUND_Y+46,hl.r,Math.PI,0); ctx.fill();
+    }
+    // clouds
+    for(const c of clouds){
+      ctx.fillStyle="rgba(200,210,255,.14)";
+      ctx.beginPath(); ctx.arc(c.x,c.y,c.r,0,7); ctx.arc(c.x+c.r,c.y+4,c.r*0.8,0,7); ctx.arc(c.x-c.r,c.y+4,c.r*0.7,0,7); ctx.fill();
+    }
+  }
+  function drawGround(){
+    ctx.strokeStyle=COLORS.accent; ctx.globalAlpha=.6; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(0,GROUND_Y+46); ctx.lineTo(W,GROUND_Y+46); ctx.stroke(); ctx.globalAlpha=1;
+    // moving dashes
+    ctx.fillStyle="rgba(120,130,220,.5)";
+    const off=(t*speed)% 60;
+    for(let x=-off;x<W;x+=60){ ctx.fillRect(x,GROUND_Y+54,26,4); }
+  }
+  function drawPlayer(){
+    const p=player;
+    const squash=p.onGround?0:2;
+    ctx.save();
+    ctx.shadowColor=COLORS.accent; ctx.shadowBlur=18;
+    const grd=ctx.createLinearGradient(p.x,p.y,p.x,p.y+p.h);
+    grd.addColorStop(0,COLORS.accent); grd.addColorStop(1,COLORS.accent2);
+    ctx.fillStyle=grd;
+    rr(p.x,p.y-p.h+squash,p.w,p.h-squash,12); ctx.fill();
+    ctx.restore();
+    // eye
+    ctx.fillStyle="#0c0f28"; ctx.beginPath(); ctx.arc(p.x+p.w-13,p.y-p.h+18,5,0,7); ctx.fill();
+    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(p.x+p.w-11,p.y-p.h+16,2,0,7); ctx.fill();
+    // legs
+    ctx.fillStyle=COLORS.accent2;
+    const run=(state==="playing"&&p.onGround)?Math.sin(t*0.5)*6:0;
+    rr(p.x+6,p.y-6,10,10+run,3); ctx.fill();
+    rr(p.x+p.w-18,p.y-6,10,10-run,3); ctx.fill();
+  }
+  function drawObstacle(o){
+    ctx.save();
+    ctx.shadowColor=COLORS.accent3; ctx.shadowBlur=12;
+    const grd=ctx.createLinearGradient(o.x,o.y,o.x,o.y+o.h);
+    grd.addColorStop(0,COLORS.accent3); grd.addColorStop(1,"#ff8a3d");
+    ctx.fillStyle=grd; rr(o.x,o.y,o.w,o.h,6); ctx.fill();
+    ctx.restore();
+  }
+
+  // ---------- loop ----------
+  let last=performance.now();
+  function frame(now){
+    const dt=Math.min(2,(now-last)/16.67); last=now;
+    ctx.clearRect(0,0,W,H);
+    drawBg();
+
+    if(state==="playing"){
+      t+=dt;
+      speed=baseSpeed+Math.min(8,t/260);
+      // clouds/hills drift
+      for(const c of clouds){ c.x-=c.s*dt; if(c.x< -60){ c.x=W+40; c.y=40+Math.random()*120; } }
+      for(const hl of hills){ hl.x-=speed*0.3*dt; if(hl.x< -hl.r){ hl.x=W+hl.r; hl.r=120+Math.random()*80; } }
+      // physics
+      player.vy+=GRAV*dt; player.y+=player.vy*dt;
+      if(player.y>=GROUND_Y){ player.y=GROUND_Y; player.vy=0; if(!player.onGround){player.onGround=true;} }
+      // obstacles
+      nextObAt-=dt*speed;
+      if(nextObAt<=0){ spawnObstacle(); nextObAt=90+Math.random()*90 - Math.min(40,t/16); }
+      for(const o of obstacles){ o.x-=speed*dt; }
+      // collisions + scoring
+      const px=player.x+6, py=player.y-player.h+4, pw=player.w-12, ph=player.h-6;
+      for(const o of obstacles){
+        if(px<o.x+o.w-4 && px+pw>o.x+4 && py<o.y+o.h-2 && py+ph>o.y+2){ gameOver(); break; }
+      }
+      obstacles=obstacles.filter(o=>{
+        if(o.x+o.w<0){ return false; }
+        if(!o.passed && o.x+o.w<player.x){ o.passed=true; score++; scoreEl.textContent=score; if(score%5===0) sfx.score(); }
+        return true;
+      });
+      // passive score by distance
+      if(t%6<dt){ /* keep obstacle-based score primary */ }
+    }
+
+    drawGround();
+    for(const o of obstacles) drawObstacle(o);
+    drawPlayer();
+
+    requestAnimationFrame(frame);
+  }
+
+  // first idle paint
+  reset(); state="idle"; overlay.hidden=false;
+  requestAnimationFrame(frame);
+
+  // hot-reload state preservation
+  try{
+    if(window.claude&&window.claude.hot){
+      window.claude.hot.snapshot&&window.claude.hot.snapshot(()=>({best}));
+      const boot=d=>{ if(d&&d.best>best){ best=d.best; bestEl.textContent=best; } };
+      window.claude.hot.ready?window.claude.hot.ready(boot):boot(window.claude.hot.data||{});
+    }
+  }catch(e){}
+})();
+</script>
