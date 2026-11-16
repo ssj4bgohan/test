@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#090b10">
+<title>RUNNER — Endless Run</title>
+<style>
+:root{color-scheme:dark;--bg:#090b10;--panel:#11151d;--line:#252c38;--muted:#858e9d;--text:#f3f5f8;--accent:#b7f36b}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:radial-gradient(ellipse at 50% 0%,#18202a 0%,var(--bg) 55%);color:var(--text)}
+body{min-height:100vh;display:grid;place-items:center;padding:28px 16px}
+main{width:min(900px,100%)}
+.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+.brand{display:flex;align-items:center;gap:11px;font-size:13px;font-weight:800;letter-spacing:.19em}
+.mark{width:32px;height:32px;border:1px solid #52613d;background:#1c2816;border-radius:10px;display:grid;place-items:center;color:var(--accent);font-size:17px}
+.pill{border:1px solid var(--line);border-radius:999px;padding:8px 12px;color:var(--muted);font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+h1{font-size:clamp(32px,6vw,54px);letter-spacing:-.055em;line-height:1;margin:0 0 10px}
+.sub{color:var(--muted);font-size:14px;margin:0 0 26px}
+.game-shell{background:linear-gradient(180deg,#151b25,#0e1219);border:1px solid #29313e;border-radius:22px;padding:16px;box-shadow:0 28px 90px #0008}
+.hud{display:flex;justify-content:flex-end;gap:28px;padding:4px 8px 14px}
+.stat{min-width:74px;text-align:right}.stat span{display:block;color:var(--muted);font-size:9px;letter-spacing:.16em;text-transform:uppercase;margin-bottom:4px}.stat strong{font-variant-numeric:tabular-nums;font-size:21px;letter-spacing:.04em}
+.stage{position:relative;overflow:hidden;border:1px solid #29313b;border-radius:13px;background:linear-gradient(#101722 0%,#151e2a 72%,#18212b 100%);touch-action:manipulation}
+canvas{display:block;width:100%;height:auto;aspect-ratio:840/300;cursor:pointer}
+.overlay{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px;background:#080c13a8;backdrop-filter:blur(3px)}
+.overlay.hidden{display:none}.overlay-card{max-width:360px}.overlay h2{font-size:clamp(25px,4vw,38px);letter-spacing:-.04em;margin:0 0 8px}.overlay p{color:#a6afbd;font-size:13px;line-height:1.6;margin:0 0 20px}
+button{font:inherit;cursor:pointer}.primary{border:0;border-radius:10px;padding:12px 22px;background:var(--accent);color:#10150b;font-size:12px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;transition:transform .15s,filter .15s}.primary:hover{filter:brightness(1.08);transform:translateY(-1px)}
+.below{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 4px 0;color:var(--muted);font-size:11px}.keys{display:flex;gap:7px;align-items:center}.key{border:1px solid #38414f;border-bottom-width:2px;border-radius:5px;padding:4px 7px;color:#d9dee7;font-size:10px}
+.mobile-hint{display:none}.footer{margin-top:24px;text-align:center;color:#626c7b;font-size:10px;letter-spacing:.12em;text-transform:uppercase}
+@media(max-width:600px){body{padding:22px 12px}.top{margin-bottom:18px}.pill{font-size:9px}.game-shell{padding:10px;border-radius:16px}.hud{gap:18px}.stat strong{font-size:18px}.below{font-size:10px}.keys{display:none}.mobile-hint{display:block}}
+</style>
+</head>
+<body>
+<main>
+  <header class="top"><div class="brand"><div class="mark">▲</div><span>RUNNER / 001</span></div><div class="pill">Endless challenge</div></header>
+  <h1>Continue correndo.</h1>
+  <p class="sub">Desvie dos obstáculos. Sobreviva o máximo que conseguir.</p>
+  <section class="game-shell" aria-label="Jogo Runner">
+    <div class="hud">
+      <div class="stat"><span>Pontuação</span><strong id="score">00000</strong></div>
+      <div class="stat"><span>Recorde</span><strong id="best">00000</strong></div>
+    </div>
+    <div class="stage">
+      <canvas id="game" width="840" height="300" aria-label="Área do jogo. Pressione espaço para pular."></canvas>
+      <div class="overlay" id="overlay">
+        <div class="overlay-card"><h2 id="overlayTitle">Pronto para correr?</h2><p id="overlayText">Pressione espaço, seta para cima ou toque na tela para começar e pular os obstáculos.</p><button class="primary" id="start">Começar jogo</button></div>
+      </div>
+    </div>
+    <div class="below"><span>Quanto tempo você consegue durar?</span><span class="keys"><span class="key">ESPAÇO</span><span class="key">↑</span><span>pular</span></span><span class="mobile-hint">Toque na tela para pular</span></div>
+  </section>
+  <div class="footer">RUNNER — Um jogo de reflexos</div>
+</main>
+<script>
+(()=>{
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const scoreEl=document.getElementById('score'),bestEl=document.getElementById('best');
+const overlay=document.getElementById('overlay'),titleEl=document.getElementById('overlayTitle'),textEl=document.getElementById('overlayText'),startBtn=document.getElementById('start');
+const W=840,H=300,ground=244;
+let state='ready',score=0,best=Number(localStorage.getItem('runner-best')||0),speed=6,frame=0,spawn=0,obstacles=[],clouds=[],particles=[],last=0;
+let player={x:105,y:ground-43,w:36,h:43,vy:0,grounded:true,duck:false};
+bestEl.textContent=String(best).padStart(5,'0');
+for(let i=0;i<5;i++)clouds.push({x:i*205+30,y:35+Math.random()*75,s:.55+Math.random()*.55});
+function rounded(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill()}
+function drawBackground(){
+ const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#111a26');g.addColorStop(1,'#19232d');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+ ctx.fillStyle='#dce8f3';ctx.globalAlpha=.75;ctx.beginPath();ctx.arc(700,55,18,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+ clouds.forEach(c=>{ctx.fillStyle='#536171';ctx.globalAlpha=.22;ctx.beginPath();ctx.ellipse(c.x,c.y,25*c.s,7*c.s,0,0,Math.PI*2);ctx.ellipse(c.x+14*c.s,c.y-5*c.s,15*c.s,8*c.s,0,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;if(state==='playing')c.x-=speed*.18;if(c.x<-60)c.x=W+50});
+ ctx.fillStyle='#202c35';ctx.beginPath();ctx.moveTo(0,205);for(let x=0;x<=W;x+=70)ctx.lineTo(x,190+Math.sin(x*.018)*10);ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.fill();
+ ctx.strokeStyle='#77836f';ctx.globalAlpha=.7;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,ground);ctx.lineTo(W,ground);ctx.stroke();ctx.globalAlpha=1;
+ ctx.strokeStyle='#48564d';ctx.lineWidth=2;for(let x=-(frame*speed*.8%42);x<W;x+=42){ctx.beginPath();ctx.moveTo(x,ground+13);ctx.lineTo(x+17,ground+13);ctx.stroke()}
+}
+function drawPlayer(){
+ const p=player;ctx.save();ctx.translate(p.x,p.y);
+ // compact pixel-inspired runner
+ ctx.fillStyle='#b7f36b';rounded(5,8,25,30,5);rounded(18,0,19,20,5);
+ ctx.fillStyle='#111722';ctx.fillRect(29,7,4,4);
+ ctx.fillStyle='#b7f36b';
+ const leg=Math.sin(frame*.25)*4;
+ if(p.grounded){ctx.fillRect(8,34,7,9+leg);ctx.fillRect(23,34,7,9-leg)}else{ctx.fillRect(8,34,7,7);ctx.fillRect(23,34,7,7)}
+ ctx.fillRect(0,19,9,6);ctx.restore();
+}
+function drawObstacle(o){
+ ctx.fillStyle='#e28b62';
+ if(o.type==='cactus'){rounded(o.x+7,o.y,17,o.h,4);rounded(o.x,o.y+14,10,7,3);rounded(o.x,o.y+8,6,15,3);rounded(o.x+21,o.y+23,10,7,3);rounded(o.x+25,o.y+16,6,17,3)}
+ else{ctx.fillStyle='#d9a65c';rounded(o.x,o.y+8,34,20,7);ctx.fillStyle='#101722';ctx.fillRect(o.x+9,o.y+15,4,4);ctx.fillRect(o.x+22,o.y+15,4,4);ctx.fillStyle='#d9a65c';ctx.fillRect(o.x+5,o.y+26,5,7);ctx.fillRect(o.x+25,o.y+26,5,7)}
+}
+function draw(){
+ drawBackground();obstacles.forEach(drawObstacle);drawPlayer();
+ particles.forEach(p=>{ctx.globalAlpha=Math.max(0,p.life/25);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,3,3);ctx.globalAlpha=1});
+ if(state==='ready'||state==='over'){ctx.fillStyle='#cbd5e1';ctx.globalAlpha=.5;ctx.font='11px ui-monospace,monospace';ctx.fillText('READY WHEN YOU ARE',W-160,24);ctx.globalAlpha=1}
+}
+function jump(){if(player.grounded&&state==='playing'){player.vy=-13.4;player.grounded=false;for(let i=0;i<5;i++)particles.push({x:player.x+15,y:ground-2,vx:(Math.random()-.5)*3,vy:-Math.random()*2,life:20,color:'#b7f36b'})}}
+function startGame(){score=0;speed=6;frame=0;spawn=55;obstacles=[];particles=[];player.y=ground-player.h;player.vy=0;player.grounded=true;state='playing';overlay.classList.add('hidden');last=performance.now();requestAnimationFrame(loop)}
+function endGame(){state='over';if(score>best){best=score;localStorage.setItem('runner-best',String(best));bestEl.textContent=String(best).padStart(5,'0')}titleEl.textContent='Fim de jogo';textEl.textContent='Você marcou '+String(score).padStart(5,'0')+' pontos. Seu recorde é '+String(best).padStart(5,'0')+'.';startBtn.textContent='Jogar novamente';overlay.classList.remove('hidden')}
+function update(dt){
+ frame+=dt;score=Math.floor(frame/6);scoreEl.textContent=String(score).padStart(5,'0');speed=Math.min(12,6+score/450);
+ player.vy+=.68*dt;player.y+=player.vy*dt;if(player.y>=ground-player.h){player.y=ground-player.h;player.vy=0;player.grounded=true}
+ spawn-=dt;if(spawn<=0){const type=Math.random()<.78?'cactus':'critter';const h=type==='cactus'?34+Math.random()*20:34;obstacles.push({x:W+20,y:ground-h,w:type==='cactus'?31:34,h,type});spawn= Math.max(48,95-Math.random()*25-score/35)}
+ obstacles.forEach(o=>o.x-=speed*dt);obstacles=obstacles.filter(o=>o.x>-60);
+ for(const o of obstacles){const ax=player.x+7,ay=player.y+5,aw=player.w-13,ah=player.h-8;if(ax<o.x+o.w-5&&ax+aw>o.x+5&&ay<o.y+o.h-3&&ay+ah>o.y+5){endGame();break}}
+ particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt});particles=particles.filter(p=>p.life>0);
+}
+function loop(now){if(state!=='playing')return;const dt=Math.min((now-last)/16.67,2);last=now;update(dt);draw();if(state==='playing')requestAnimationFrame(loop)}
+function action(){if(state==='ready'||state==='over'){startGame();return}jump()}
+startBtn.addEventListener('click',startGame);
+canvas.addEventListener('pointerdown',e=>{e.preventDefault();action()});
+window.addEventListener('keydown',e=>{if(['Space','ArrowUp','KeyW'].includes(e.code)){e.preventDefault();if(!e.repeat)action()}if(e.code==='Enter'&&state!=='playing')startGame()});
+draw();
+})();
+</script>
+</body>
+</html>
