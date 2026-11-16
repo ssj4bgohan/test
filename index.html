@@ -53,6 +53,16 @@ button{font:inherit;cursor:pointer}.primary{border:0;border-radius:10px;padding:
   </section>
   <div class="footer">RUNNER — Um jogo de reflexos</div>
 </main>
+<div class="consent" id="consent" hidden>
+  <div class="consent-copy">
+    <strong>Privacidade</strong>
+    <p>Este site pode registrar eventos anônimos de visita e de partida (incluindo a pontuação) para estatísticas. <strong>Não</strong> coletamos IP, localização, nome, navegador nem identificadores pessoais. Você decide.</p>
+  </div>
+  <div class="consent-actions">
+    <button id="consentDecline">Recusar</button>
+    <button class="accept" id="consentAccept">Aceitar</button>
+  </div>
+</div>
 <script>
 (()=>{
 const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
@@ -62,6 +72,31 @@ const W=840,H=300,ground=244;
 let state='ready',score=0,best=Number(localStorage.getItem('runner-best')||0),speed=6,frame=0,spawn=0,obstacles=[],clouds=[],particles=[],last=0;
 let player={x:105,y:ground-43,w:36,h:43,vy:0,grounded:true,duck:false};
 bestEl.textContent=String(best).padStart(5,'0');
+// ---- analytics com consentimento: só evento + pontuação, sem IP nem dados pessoais ----
+const consentEl=document.getElementById('consent');
+let analyticsOk=false;
+try{analyticsOk=localStorage.getItem('runner-analytics')==='yes';}catch(e){}
+function sendAnalytics(event,score){
+ if(!analyticsOk)return;
+ const payload={event};
+ if(event==='game_over'&&Number.isFinite(score))payload.score=score;
+ try{fetch('/api/track',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),keepalive:true}).catch(()=>{});}catch(e){}
+}
+function setConsent(v){
+ try{localStorage.setItem('runner-analytics',v?'yes':'no');}catch(e){}
+ analyticsOk=v;if(consentEl)consentEl.hidden=true;
+ if(v)sendAnalytics('visit');
+}
+(function initConsent(){
+ let decided=false;try{decided=localStorage.getItem('runner-analytics')!==null;}catch(e){}
+ if(consentEl){
+  consentEl.hidden=decided;
+  const a=document.getElementById('consentAccept'),d=document.getElementById('consentDecline');
+  a&&a.addEventListener('click',()=>setConsent(true));
+  d&&d.addEventListener('click',()=>setConsent(false));
+ }
+ if(analyticsOk)sendAnalytics('visit');
+})();
 for(let i=0;i<5;i++)clouds.push({x:i*205+30,y:35+Math.random()*75,s:.55+Math.random()*.55});
 function rounded(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill()}
 function drawBackground(){
