@@ -27,6 +27,10 @@ button{font:inherit;cursor:pointer}.primary{border:0;border-radius:10px;padding:
 .below{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 4px 0;color:var(--muted);font-size:11px}.keys{display:flex;gap:7px;align-items:center}.key{border:1px solid #38414f;border-bottom-width:2px;border-radius:5px;padding:4px 7px;color:#d9dee7;font-size:10px}
 .mobile-hint{display:none}.footer{margin-top:24px;text-align:center;color:#626c7b;font-size:10px;letter-spacing:.12em;text-transform:uppercase}
 @media(max-width:600px){body{padding:22px 12px}.top{margin-bottom:18px}.pill{font-size:9px}.game-shell{padding:10px;border-radius:16px}.hud{gap:18px}.stat strong{font-size:18px}.below{font-size:10px}.keys{display:none}.mobile-hint{display:block}}
+
+.consent{position:fixed;z-index:10;left:16px;right:16px;bottom:16px;margin:auto;max-width:650px;padding:17px 18px;background:#111822;border:1px solid #344052;border-radius:14px;box-shadow:0 18px 60px #000b;display:flex;align-items:center;gap:18px}
+.consent[hidden]{display:none}.consent-copy{flex:1}.consent-copy strong{font-size:13px}.consent-copy p{font-size:11px;line-height:1.5;color:#a6afbd;margin:5px 0 0}.consent-actions{display:flex;gap:8px;flex-wrap:wrap}.consent-actions button{border:1px solid #394454;border-radius:8px;padding:9px 12px;background:#1b2430;color:#e8edf5;font-size:10px;font-weight:800}.consent-actions .accept{background:var(--accent);border-color:var(--accent);color:#10150b}
+@media(max-width:600px){.consent{align-items:stretch;flex-direction:column;gap:12px}.consent-actions button{flex:1}}
 </style>
 </head>
 <body>
@@ -89,8 +93,8 @@ function draw(){
  if(state==='ready'||state==='over'){ctx.fillStyle='#cbd5e1';ctx.globalAlpha=.5;ctx.font='11px ui-monospace,monospace';ctx.fillText('READY WHEN YOU ARE',W-160,24);ctx.globalAlpha=1}
 }
 function jump(){if(player.grounded&&state==='playing'){player.vy=-13.4;player.grounded=false;for(let i=0;i<5;i++)particles.push({x:player.x+15,y:ground-2,vx:(Math.random()-.5)*3,vy:-Math.random()*2,life:20,color:'#b7f36b'})}}
-function startGame(){score=0;speed=6;frame=0;spawn=55;obstacles=[];particles=[];player.y=ground-player.h;player.vy=0;player.grounded=true;state='playing';overlay.classList.add('hidden');last=performance.now();requestAnimationFrame(loop)}
-function endGame(){state='over';if(score>best){best=score;localStorage.setItem('runner-best',String(best));bestEl.textContent=String(best).padStart(5,'0')}titleEl.textContent='Fim de jogo';textEl.textContent='Você marcou '+String(score).padStart(5,'0')+' pontos. Seu recorde é '+String(best).padStart(5,'0')+'.';startBtn.textContent='Jogar novamente';overlay.classList.remove('hidden')}
+function startGame(){sendAnalytics('game_start');score=0;speed=6;frame=0;spawn=55;obstacles=[];particles=[];player.y=ground-player.h;player.vy=0;player.grounded=true;state='playing';overlay.classList.add('hidden');last=performance.now();requestAnimationFrame(loop)}
+function endGame(){sendAnalytics('game_over',score);state='over';if(score>best){best=score;localStorage.setItem('runner-best',String(best));bestEl.textContent=String(best).padStart(5,'0')}titleEl.textContent='Fim de jogo';textEl.textContent='Você marcou '+String(score).padStart(5,'0')+' pontos. Seu recorde é '+String(best).padStart(5,'0')+'.';startBtn.textContent='Jogar novamente';overlay.classList.remove('hidden')}
 function update(dt){
  frame+=dt;score=Math.floor(frame/6);scoreEl.textContent=String(score).padStart(5,'0');speed=Math.min(12,6+score/450);
  player.vy+=.68*dt;player.y+=player.vy*dt;if(player.y>=ground-player.h){player.y=ground-player.h;player.vy=0;player.grounded=true}
